@@ -1,0 +1,6 @@
+/postgres/
+/redis/
+/funkwhale/music
+/funkwhale/media
+/funkwhale/static
+/funkwhale/frontend

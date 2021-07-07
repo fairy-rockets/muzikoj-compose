@@ -2,27 +2,43 @@ version: "3"
 
 services:
   postgres:
-    restart: unless-stopped
+    container_name: 'muzikoj_postgres'
+    hostname: 'muzikoj_postgres'
+    restart: always
     networks:
       - default
     env_file: .env
     environment:
-      - "POSTGRES_HOST_AUTH_METHOD=trust"
-    image: postgres:11
+      - 'POSTGRES_USER=funkwhale'
+      - 'POSTGRES_PASSWORD=funkwhale'
+      - 'POSTGRES_DB=funkwhale'
+      - 'POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
+      - 'TZ=Asia/Tokyo'
+      - 'PGTZ=Asia/Tokyo'
+      - 'POSTGRES_HOST_AUTH_METHOD=trust'
+    image: postgres:alpine
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - ./var/postgres:/var/lib/postgresql/data
+    networks:
+      - 'muzikoj-link'
 
   redis:
-    restart: unless-stopped
+    container_name: 'muzikoj_redis'
+    hostname: 'muzikoj_redis'
+    restart: always
     networks:
       - default
     env_file: .env
     image: redis:5
     volumes:
-      - ./data/redis:/data
+      - ./var/redis:/data
+    networks:
+      - 'muzikoj-link'
 
   celeryworker:
-    restart: unless-stopped
+    container_name: 'muzikoj_celeryworker'
+    hostname: 'muzikoj_celeryworker'
+    restart: always
     image: funkwhale/funkwhale:${FUNKWHALE_VERSION:-latest}
     networks:
       - default
@@ -42,11 +58,15 @@ services:
     environment:
       - C_FORCE_ROOT=true
     volumes:
-      - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
-      - "${MEDIA_ROOT}:${MEDIA_ROOT}"
+      - "./var/funkwhale/music:${MUSIC_DIRECTORY_PATH-/music}:ro"
+      - "./var/funkwhale/media:${MEDIA_ROOT}"
+    networks:
+      - 'muzikoj-link'
 
   celerybeat:
-    restart: unless-stopped
+    container_name: 'muzikoj_celerybeat'
+    hostname: 'muzikoj_celerybeat'
+    restart: always
     image: funkwhale/funkwhale:${FUNKWHALE_VERSION:-latest}
     networks:
       - default
@@ -55,9 +75,13 @@ services:
       - redis
     env_file: .env
     command: celery -A funkwhale_api.taskapp beat --pidfile= -l INFO
+    networks:
+      - 'muzikoj-link'
 
   api:
-    restart: unless-stopped
+    container_name: 'muzikoj_api'
+    hostname: 'muzikoj_api'
+    restart: always
     image: funkwhale/funkwhale:${FUNKWHALE_VERSION:-latest}
     networks:
       - default
@@ -66,15 +90,19 @@ services:
       - redis
     env_file: .env
     volumes:
-      - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
-      - "${MEDIA_ROOT}:${MEDIA_ROOT}"
-      - "${STATIC_ROOT}:${STATIC_ROOT}"
-      - "${FUNKWHALE_FRONTEND_PATH}:/frontend"
+      - "./var/funkwhale/music:${MUSIC_DIRECTORY_PATH-/music}:ro"
+      - "./var/funkwhale/media:${MEDIA_ROOT}"
+      - "./var/funkwhale/static:${STATIC_ROOT}"
+      - "./var/funkwhale/frontend:/frontend"
+    networks:
+      - 'muzikoj-link'
     ports:
       - "5000"
 
   nginx:
-    restart: unless-stopped
+    container_name: 'muzikoj_nginx'
+    hostname: 'muzikoj_nginx'
+    restart: always
     image: nginx
     networks:
       - default
@@ -88,13 +116,15 @@ services:
     volumes:
       - "./nginx/funkwhale.template:/etc/nginx/conf.d/funkwhale.template:ro"
       - "./nginx/funkwhale_proxy.conf:/etc/nginx/funkwhale_proxy.conf:ro"
-      - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
-      - "${MEDIA_ROOT}:${MEDIA_ROOT}:ro"
-      - "${STATIC_ROOT}:${STATIC_ROOT}:ro"
-      - "${FUNKWHALE_FRONTEND_PATH}:/frontend:ro"
-    ports:
-      # override those variables in your .env file if needed
-      - "${FUNKWHALE_API_IP}:${FUNKWHALE_API_PORT}:80"
+      - "./var/funkwhale/music:${MUSIC_DIRECTORY_PATH-/music}:ro"
+      - "./var/funkwhale/media:${MEDIA_ROOT}:ro"
+      - "./var/funkwhale/static:${STATIC_ROOT}:ro"
+      - "./var/funkwhale/frontend:/frontend:ro"
+    networks:
+      - 'muzikoj-link'
+      - 'planet-link'
+    expose:
+      - '80'
     command: >
         sh -c "envsubst \"`env | awk -F = '{printf \" $$%s\", $$1}'`\"
         < /etc/nginx/conf.d/funkwhale.template
@@ -104,3 +134,8 @@ services:
 
 networks:
   default:
+    driver: 'null'
+  muzikoj-link:
+    external: false
+  planet-link:
+    external: true
